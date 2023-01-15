@@ -7,30 +7,27 @@ from app.models.charity_project import CharityProject
 from app.models.donation import Donation
 
 
-async def get_available_donation(session: AsyncSession):
-    """Извлекает из БД доступное к расходу пожертвование"""
-    dnt_obj = await session.execute(
+async def get_investment_objects(session: AsyncSession):
+    """Извлекает из БД объекты доступные к расходу/внесению средств"""
+    donationt_obj = await session.execute(
         select(Donation).where(
             Donation.fully_invested == 0).order_by('create_date'))
-    return dnt_obj.scalars().first()
 
-
-async def get_investment_project(session: AsyncSession):
-    """Извлекает из БД доступный для инвестиций проект"""
-    prj_obj = await session.execute(
+    project_obj = await session.execute(
         select(CharityProject).where(
             CharityProject.fully_invested == 0).order_by('create_date'))
-    return prj_obj.scalars().first()
+
+    return donationt_obj.scalars().first(), project_obj.scalars().first()
 
 
 async def chng_dnt_obj_values(
     obj,
-    add_fnds=None,
+    add_funds=None,
     fully_invested=False,
     current_time=None
 ) -> None:
     """Устанавливает значения для объектов пожертвований и проектов"""
-    obj.invested_amount += add_fnds
+    obj.invested_amount += add_funds
     obj.fully_invested = fully_invested
     obj.close_date = current_time
 
@@ -40,57 +37,55 @@ async def investment_process(
     session: AsyncSession,
 ):
     """Инвестирует пожертвования в проекты"""
+    donationt_obj, project_obj = await get_investment_objects(session)
 
-    dnt_obj = await get_available_donation(session)
-    prj_obj = await get_investment_project(session)
-
-    if (dnt_obj is None) or (prj_obj is None):
+    if (donationt_obj is None) or (project_obj is None):
         return obj
 
-    need_invest = prj_obj.full_amount - prj_obj.invested_amount
-    avlbl_fnds = dnt_obj.full_amount - dnt_obj.invested_amount
+    need_invest = project_obj.full_amount - project_obj.invested_amount
+    available_funds = donationt_obj.full_amount - donationt_obj.invested_amount
     current_time = datetime.now()
 
-    if avlbl_fnds > need_invest:
+    if available_funds > need_invest:
         await chng_dnt_obj_values(
-            obj=prj_obj,
-            add_fnds=need_invest,
+            obj=project_obj,
+            add_funds=need_invest,
             fully_invested=True,
             current_time=current_time
         )
         await chng_dnt_obj_values(
-            obj=dnt_obj,
-            add_fnds=need_invest
+            obj=donationt_obj,
+            add_funds=need_invest
         )
 
-    elif avlbl_fnds == need_invest:
+    elif available_funds == need_invest:
         await chng_dnt_obj_values(
-            obj=prj_obj,
-            add_fnds=avlbl_fnds,
+            obj=project_obj,
+            add_funds=available_funds,
             fully_invested=True,
             current_time=current_time
         )
         await chng_dnt_obj_values(
-            obj=dnt_obj,
-            add_fnds=avlbl_fnds,
-            fully_invested=True,
-            current_time=current_time
-        )
-
-    elif avlbl_fnds < need_invest:
-        await chng_dnt_obj_values(
-            obj=prj_obj, add_fnds=avlbl_fnds
-        )
-        await chng_dnt_obj_values(
-            obj=dnt_obj,
-            add_fnds=avlbl_fnds,
+            obj=donationt_obj,
+            add_funds=available_funds,
             fully_invested=True,
             current_time=current_time
         )
 
-    session.add(prj_obj)
-    session.add(dnt_obj)
+    elif available_funds < need_invest:
+        await chng_dnt_obj_values(
+            obj=project_obj, add_funds=available_funds
+        )
+        await chng_dnt_obj_values(
+            obj=donationt_obj,
+            add_funds=available_funds,
+            fully_invested=True,
+            current_time=current_time
+        )
+
+    session.add(project_obj)
+    session.add(donationt_obj)
     await session.commit()
-    await session.refresh(prj_obj)
-    await session.refresh(dnt_obj)
+    await session.refresh(project_obj)
+    await session.refresh(donationt_obj)
     return await investment_process(obj, session)

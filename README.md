@@ -17,6 +17,7 @@
 - [Alembic](https://pypi.org/project/alembic/);
 - [Pydantic](https://pypi.org/project/pydantic/);
 - [Asyncio](https://docs.python.org/3/library/asyncio.html);
+- [Google API](https://console.cloud.google.com/apis)
 - [Google Sheets](https://www.google.ru/intl/ru/sheets/about/);
 - [Google Drive](https://www.google.com/drive/);
 
